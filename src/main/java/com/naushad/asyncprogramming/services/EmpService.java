@@ -13,12 +13,17 @@ import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.Future;
 
 @Service
 public class EmpService {
 
     private static final Logger log = LoggerFactory.getLogger(EmployeeRepo.class);
+
+    @Autowired
+    private ExecutorsService executorsService;
 
     @Autowired
     private EmployeeRepo employeeRepo;
@@ -67,6 +72,31 @@ public class EmpService {
                     projects.add(project);
             } catch (Exception e) {
                 log.error("Exception occurred while getting projectList from future object");
+            }
+        }
+        return mapEmpProjectDetails(employee,projects);
+    }
+
+    /* Get all projects using executor service*/
+    public EmployeeProjectDetails getALlEmpProjectsById(Integer empId){
+        List<EmpProjectMapping> empProjectMappings =  employeeRepo.getAllProjectOfEmp(empId);
+        List<Callable<Project>> callables = new ArrayList<>();
+        empProjectMappings.forEach(empProjectMapping -> {
+            Callable<Project>  callable = () ->{
+                Project project = projectRepo.getProjectByProjectId(empProjectMapping.getProjectId());
+                return project;
+            };
+            callables.add(callable);
+        });
+        List<Future<Project>> futureProjects = executorsService.execute(callables);
+        Employee employee = getEmployeeById(empId);
+        List<Project> projects = new ArrayList<>();
+        for(Future<Project> future: futureProjects){
+            try{
+                Project project = future.get();
+                projects.add(project);
+            }catch (Exception ex){
+                log.error("Exception occurred while fetching project detail from future object", ex);
             }
         }
         return mapEmpProjectDetails(employee,projects);
